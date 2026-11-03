@@ -15,7 +15,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from functools import partial
-from io import StringIO
+from io import StringIO, BytesIO, TextIOWrapper
 
 # from pyext import RuntimeModule
 from types import ModuleType
@@ -61,19 +61,23 @@ def timeout_handler(debug, signum, frame):
 # used to capture stdout as a list
 # from https://stackoverflow.com/a/16571630/6416660
 # alternative use redirect_stdout() from contextlib
-class Capturing(list):
+class Stream(TextIOWrapper):
+    # 保持原执行器允许答案关闭流而不影响结果捕获的行为。
+    def close(self, *args):
+        self.flush()
 
+class Capturing(list):
     def __enter__(self):
-        self._stdout = sys.stdout
-        sys.stdout = self._stringio = StringIO()
-        # Make closing the StringIO a no-op
-        self._stringio.close = lambda x: 1
+        self.previous = sys.stdout
+        self.stream = Stream(BytesIO(), encoding='utf-8', write_through=True)
+        sys.stdout = self.stream
         return self
 
     def __exit__(self, *args):
-        self.append(self._stringio.getvalue())
-        del self._stringio  # free up some memory
-        sys.stdout = self._stdout
+        try:
+            self.stream.flush()
+            self.append(self.stream.buffer.getvalue().decode('utf-8'))
+        finally: sys.stdout = self.previous
 
 
 def clean_if_name(code: str) -> str:
@@ -120,30 +124,12 @@ def make_function(code: str) -> str:
 
 
 def call_method(method, inputs):
-
-    if isinstance(inputs, list):
-        inputs = '\n'.join(inputs)
-
-    inputs_line_iterator = iter(inputs.split('\n'))
-
-    # sys.setrecursionlimit(10000)
-
-    # @patch('builtins.input', side_effect=inputs.split("\n"))
-    @patch('builtins.open', mock_open(read_data=inputs))
-    @patch('sys.stdin', StringIO(inputs))
-    @patch('sys.stdin.readline', lambda *args: next(inputs_line_iterator))
-    @patch('sys.stdin.readlines', lambda *args: inputs.split('\n'))
-    @patch('sys.stdin.read', lambda *args: inputs)
-    # @patch('sys.stdout.write', print)
-    def _inner_call_method(_method):
-        try:
-            return _method()
-        except SystemExit as e:
-            pass
-        finally:
-            pass
-
-    return _inner_call_method(method)
+    if isinstance(inputs, list): inputs = '\n'.join(inputs)
+    # 所有读取接口共享同一个真实游标；不再分别mock read/readline。
+    stream = Stream(BytesIO(inputs.encode()), encoding='utf-8')
+    with patch('builtins.open', mock_open(read_data=inputs)), patch('sys.stdin', stream):
+        try: return method()
+        except SystemExit: pass
 
 
 def get_function(compiled_sol, fn_name: str):  # type: ignore
