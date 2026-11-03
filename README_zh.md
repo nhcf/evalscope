@@ -21,6 +21,41 @@
 <p>
 
 
+## 本分支：LiveCodeBench I/O修复
+
+分支：`fix/lcb-io-v1.8.1-20261103`。镜像标签：`v1.8.1-lcb-io-fix-20261103`。
+
+非沙箱执行器用`StringIO`模拟标准输入、输出，缺少`.buffer`接口。正确答案使用二进制I/O时会触发`AttributeError`并被计0分。仅使用文本接口的答案不会触发此项缺陷。
+
+| 上游依据 | 问题与本分支的采用范围 |
+| --- | --- |
+| [EvalScope Issue #1434](https://github.com/modelscope/evalscope/issues/1434) | 记录EvalScope 1.8.1中相同的`sys.stdin.buffer`异常。 |
+| [EvalScope PR #1438](https://github.com/modelscope/evalscope/pull/1438) | 提供`TextIOWrapper(BytesIO(...))`输入流修复。本分支参考该方案适配，未直接cherry-pick完整PR。 |
+| [LiveCodeBench Issue #160](https://github.com/LiveCodeBench/LiveCodeBench/issues/160) | 记录官方执行器连续二进制逐行读取和二进制输出捕获问题；本分支将这些路径纳入回归检查。 |
+
+修改文件：`evalscope/benchmarks/live_code_bench/testing_util.py`。
+
+- `call_method`：文本、二进制输入共享游标，移除独立的`read/readline/readlines` mock。
+- `Capturing`：按写入顺序捕获文本与二进制输出，再解码交给原评分器。
+- `Stream.close`：flush后保留捕获流，兼容答案主动关闭标准输出。
+
+本补丁覆盖非沙箱路径，保持提示词、代码提取、输出比较和执行超时规则不变。
+
+2026-11-03复用两轮LCB v6原始答案及完整测试用例，各重判175题，每个用例仍限制6秒：
+
+| 模型 / 轮次 | 修复前 | 修复后 | 新增通过 |
+| --- | ---: | ---: | ---: |
+| DeepSeek-V4.1-Flash-1017-INT8 / 10月22日 | 98/175（56.00%） | 153/175（87.43%） | 55题 |
+| DeepSeek-V4.1-Flash / 11月2日 | 97/175（55.43%） | 149/175（85.14%） | 52题 |
+
+原通过的195题全部保持通过。上述为I/O兼容性校正分数，数值容差、构造题判分及代码包装独立核验。部署后的服务还完成了一次定向验收：新答案同时使用`stdin.buffer.read()`和`stdout.buffer.write()`，43/43个用例通过。该任务明确要求使用二进制I/O，属于功能检查，不计入标准LCB分数。
+
+安装项目依赖后，在Linux环境执行10项I/O、判错及超时回归检查：
+
+```bash
+python -m unittest tests.benchmark.test_live_code_bench_io -v
+```
+
 > ⭐ 如果你喜欢这个项目，请点击右上角的 "Star" 按钮支持我们。你的支持是我们前进的动力！
 
 ## 📝 简介

@@ -21,6 +21,41 @@
 <p>
 
 
+## LiveCodeBench I/O fix in this branch
+
+Branch: `fix/lcb-io-v1.8.1-20261103`. Image tag: `v1.8.1-lcb-io-fix-20261103`.
+
+The non-sandbox judge replaced standard streams with `StringIO`, which has no `.buffer` attribute. Valid solutions using binary I/O failed with `AttributeError` and received zero credit. Text-only solutions did not trigger this defect.
+
+| Reference | Evidence and use in this branch |
+| --- | --- |
+| [EvalScope issue #1434](https://github.com/modelscope/evalscope/issues/1434) | Reports the same `sys.stdin.buffer` failure in EvalScope 1.8.1. |
+| [EvalScope PR #1438](https://github.com/modelscope/evalscope/pull/1438) | Provides the `TextIOWrapper(BytesIO(...))` input fix. This branch adapts that approach; it does not cherry-pick the complete PR. |
+| [LiveCodeBench issue #160](https://github.com/LiveCodeBench/LiveCodeBench/issues/160) | Reports repeated binary-line reads and binary-output capture defects in the upstream judge. These paths are covered by local regression tests. |
+
+Changes in `evalscope/benchmarks/live_code_bench/testing_util.py`:
+
+- `call_method`: text and binary input share one stream cursor; remove separate `read/readline/readlines` mocks.
+- `Capturing`: capture text and binary output in write order, then decode it for the existing scorer.
+- `Stream.close`: flush without closing the capture stream, preserving support for solutions that close stdout.
+
+This patch covers the non-sandbox path. Prompting, code extraction, output comparison and execution timeouts remain unchanged.
+
+Validation on 2026-11-03 reused the original answers and complete test cases for two 175-problem LCB v6 runs. Each test case retained its 6-second timeout.
+
+| Model / run | Before | After | Recovered problems |
+| --- | ---: | ---: | ---: |
+| DeepSeek-V4.1-Flash-1017-INT8 / Oct 22 | 98/175 (56.00%) | 153/175 (87.43%) | 55 |
+| DeepSeek-V4.1-Flash / Nov 2 | 97/175 (55.43%) | 149/175 (85.14%) | 52 |
+
+All 195 previously passing answers still passed. These are I/O-corrected scores; numeric tolerance, constructive-answer checks and code wrapping require separate review. A deployed-service smoke test also generated a new answer using both `stdin.buffer.read()` and `stdout.buffer.write()` and passed all 43 test cases. Its explicit I/O prompt makes it a functional check, not a standard benchmark score.
+
+Run the 10 I/O, scoring and timeout regression scenarios with the project dependencies installed (Linux):
+
+```bash
+python -m unittest tests.benchmark.test_live_code_bench_io -v
+```
+
 > ⭐ If you like this project, please click the "Star" button in the upper right corner to support us. Your support is our motivation to move forward!
 
 ## 📝 Introduction
