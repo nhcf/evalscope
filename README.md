@@ -46,7 +46,6 @@ Validation on 2026-11-03 reused the original answers and complete test cases for
 | Model / run | Before | After | Recovered problems |
 | --- | ---: | ---: | ---: |
 | DeepSeek-V4.1-Flash-1017-INT8 / Oct 22 | 98/175 (56.00%) | 153/175 (87.43%) | 55 |
-| DeepSeek-V4.1-Flash / Nov 2 | 97/175 (55.43%) | 149/175 (85.14%) | 52 |
 
 All 195 previously passing answers still passed. These are I/O-corrected scores; numeric tolerance, constructive-answer checks and code wrapping require separate review. A deployed-service smoke test also generated a new answer using both `stdin.buffer.read()` and `stdout.buffer.write()` and passed all 43 test cases. Its explicit I/O prompt makes it a functional check, not a standard benchmark score.
 
